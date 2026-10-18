@@ -1,26 +1,19 @@
-# Nomad Cluster on Linode
+# Nomad cluster on Linode
 
-Deploy a production-ready, high-availability Nomad cluster on Linode using Terraform and Ansible.
-Following the tutorial by Justin Mitchel
+[![Terraform](https://img.shields.io/badge/Terraform-infra-7B42BC?logo=terraform&logoColor=white)](infra)
+[![Nomad](https://img.shields.io/badge/Nomad-1.x-00CA8E?logo=hashicorp&logoColor=white)](https://developer.hashicorp.com/nomad)
+[![Linode](https://img.shields.io/badge/Linode-Akamai-00A95C)](https://www.linode.com/)
 
-https://www.youtube.com/watch?v=D8KgwFFNFWA
+Terraform and Ansible for a six-node Nomad cluster on Linode: three servers, three clients, Consul on all of them, and a private VPC between the nodes.
 
-Justin's repo:
-https://github.com/jmitchel3/nomad-cluster-terraform-ansible-linode
+This follows Justin Mitchel's tutorial and repo, with the Nomad, Consul and Linode providers bumped to current versions. The original walkthrough is still the best explanation of why the pieces are arranged this way:
 
-I've just bumped the nomad/consul/linode provider to the latest versions available in early 2026.
+- Video: https://www.youtube.com/watch?v=D8KgwFFNFWA
+- Repo: https://github.com/jmitchel3/nomad-cluster-terraform-ansible-linode
 
-## What You Get
+## What you get
 
-A 6-node Nomad cluster with:
-
-- **3 Nomad servers** — handles cluster management and job scheduling
-- **3 Nomad clients** — runs your containerized workloads
-- **Consul** — service discovery and health monitoring for all nodes
-- **VPC networking** — private communication between nodes
-- **Docker + CNI plugins** — full container networking support on clients
-
-## Architecture
+Three Nomad servers handle scheduling and cluster state. Three clients run the workloads, with Docker and the CNI plugins installed. Consul provides service discovery and health checks on every node, and everything talks over a VPC on `10.0.0.0/24`.
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -41,34 +34,25 @@ A 6-node Nomad cluster with:
 └─────────────────────────────────────────────────────────┘
 ```
 
-## Prerequisites
+## Before you start
 
-A Linode account with an API token. 
-
-Push the token:
+A Linode account and an API token. Put the token in `infra/terraform.tfvars`:
 
 ```bash
-echo "linode_api_tokn=\"your_api_token\"" >> infra/terraform.tfvars
+echo 'linode_api_token="your_api_token"' >> infra/terraform.tfvars
 ```
 
-## Quick Start
+You'll also need Terraform and Python 3 on the machine you run this from.
 
-### 1. Plan the infrastructure
+## Deploy
 
 ```bash
 cd infra
 terraform plan
-```
-
-### 2. Apply and provision
-
-```bash
 terraform apply
 ```
 
-This creates all Linode instances, configures VPC networking, and generates an Ansible inventory at `inventory.ini`.
-
-### 3. Run Ansible to configure the cluster
+That creates the instances, wires the VPC, and writes an Ansible inventory to `inventory.ini`.
 
 ```bash
 cd ../config
@@ -78,76 +62,33 @@ pip install ansible
 ansible-playbook -i inventory.ini main.yaml
 ```
 
-Ansible will:
-- Install Consul on all nodes (server mode on Nomad servers, client mode on clients)
-- Install Nomad on all nodes
-- Install Docker and CNI plugins on client nodes
-- Start all services
+Ansible installs Consul in server mode on the Nomad servers and client mode elsewhere, installs Nomad everywhere, puts Docker and CNI plugins on the clients, and starts the services.
 
-### 4. Submit a job
+## Check it and run something
 
 ```bash
-# Check the cluster is healthy
 nomad server members -address=http://10.0.0.5:4646
-
-# Run the hello-world example
 nomad run ../samples-jobs/hello-world.hcl
-
-# Check job status
 nomad job status hello-world
 ```
 
-## Sample Jobs
+The Nomad UI is at `http://10.0.0.5:4646`, Consul at `http://10.0.0.5:8500`.
 
-| Job | Description |
-|-----|-------------|
-| `hello-world.hcl` | Simple Docker web server |
-| `cfe-nginx.hcl` | Nginx with HTTP health checks |
-| `iac-python.hcl` | Python web application |
-| `load-balancing.hcl` | Nginx load balancer with Consul service discovery |
+Sample jobs in `samples-jobs/`: `hello-world.hcl` (a Docker web server), `cfe-nginx.hcl` (nginx with HTTP health checks), `iac-python.hcl` (a Python app), `load-balancing.hcl` (nginx behind Consul service discovery).
 
-## Key Files
+## Files worth knowing
 
-### Infrastructure (Terraform)
+Terraform lives in `infra/`: `main.tf` for the provider, `cluster_instance.tf` for servers and clients, `cluster_vpc.tf` for the network, `cluster_inventory.tf` for the generated inventory, `variables.tf` for the knobs.
 
-| File | Purpose |
-|------|---------|
-| `main.tf` | Linode provider configuration |
-| `cluster_instance.tf` | Nomad server and client instance definitions |
-| `cluster_vpc.tf` | VPC and subnet setup |
-| `cluster_inventory.tf` | Dynamic Ansible inventory generation |
-| `variables.tf` | Configurable variables |
+Ansible lives in `config/`: `main.yaml` is the playbook, with `consul/`, `nomad/`, `docker_install/` and `cni_plugins/` roles.
 
-### Configuration (Ansible)
-
-| File | Purpose |
-|------|---------|
-| `main.yaml` | Main playbook to configure all nodes |
-| `inventory.ini` | Static inventory (or use Terraform-generated) |
-| `consul/` | Consul installation and configuration role |
-| `nomad/` | Nomad installation and configuration role |
-| `docker_install/` | Docker runtime installation role |
-| `cni_plugins/` | CNI plugins for container networking |
-
-## Connecting to the Cluster
-
-Nomad UI: `http://10.0.0.5:4646`
-
-Consul UI: `http://10.0.0.5:8500`
-
-## Tear Down
+## Tear down
 
 ```bash
-# Destroy all Linode resources
 cd infra
 terraform destroy
 ```
 
-## Versions
+That removes the instances. Check the Linode dashboard afterwards to make sure nothing was left behind.
 
-| Component | Version |
-|-----------|---------|
-| Nomad | 1.11.3 |
-| Consul | 1.22.6 |
-| Terraform (Linode provider) | 3.11.0 |
-| CNI Plugins | 1.9.1 |
+There's no license file in this repo yet, so treat it as all rights reserved.
